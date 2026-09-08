@@ -25,6 +25,8 @@ function initState() {
     role: null, // 'petani' | 'admin'
     farmName: '',
     plots,
+    notificationsEnabled: true,
+    notifications: [], // simulated push notifications: { id, plotName, title, body, tone, time }
   }
 }
 
@@ -49,7 +51,7 @@ function driftPlot(plot) {
 
 function tickAttack(plot) {
   const attack = plot.attack
-  if (!attack) return plot
+  if (!attack) return { plot, notify: null }
 
   if (attack.phase === 'ramping') {
     const target = 92
@@ -69,9 +71,16 @@ function tickAttack(plot) {
         description: `Amaran kritikal — ${attack.diagnosis.name} (${attack.diagnosis.species}) dikesan`,
         outcome: `Risiko ${risk}%`,
       })
-      return next
+      return {
+        plot: next,
+        notify: {
+          tone: 'critical',
+          title: '⚠️ Amaran Kritikal — PestiGuard',
+          body: `${attack.diagnosis.name} dikesan di ${plot.name} · Risiko ${risk}%`,
+        },
+      }
     }
-    return { ...plot, risk, temp, humidity, attack }
+    return { plot: { ...plot, risk, temp, humidity, attack }, notify: null }
   }
 
   if (attack.phase === 'critical') {
@@ -84,9 +93,16 @@ function tickAttack(plot) {
         description: 'Mod Tindak Balas Automatik diaktifkan — injap dibuka',
         outcome: 'Menyembur',
       })
-      return next
+      return {
+        plot: next,
+        notify: {
+          tone: 'info',
+          title: '💧 PestiGuard',
+          body: `Tindak balas automatik diaktifkan di ${plot.name} — injap dibuka`,
+        },
+      }
     }
-    return plot
+    return { plot, notify: null }
   }
 
   if (attack.phase === 'responding') {
@@ -104,13 +120,20 @@ function tickAttack(plot) {
         description: 'Ancaman dikawal — semburan sasaran selesai',
         outcome: `Jimat racun ~${saved}%`,
       })
-      return next
+      return {
+        plot: next,
+        notify: {
+          tone: 'resolved',
+          title: '✅ Ancaman Dikawal — PestiGuard',
+          body: `${plot.name} selamat semula · Jimat racun ~${saved}%`,
+        },
+      }
     }
-    return { ...plot, risk }
+    return { plot: { ...plot, risk }, notify: null }
   }
 
   // 'resolved' — hold until the reviewer dismisses the alert.
-  return plot
+  return { plot, notify: null }
 }
 
 function rampStep(gap) {
@@ -127,10 +150,34 @@ function reducer(state, action) {
       return { ...state, farmName: action.name }
     case 'TICK': {
       const plots = {}
+      const newNotifications = []
       for (const [id, plot] of Object.entries(state.plots)) {
-        plots[id] = plot.attack ? tickAttack(plot) : driftPlot(plot)
+        if (plot.attack) {
+          const { plot: nextPlot, notify } = tickAttack(plot)
+          plots[id] = nextPlot
+          if (notify && state.notificationsEnabled && id === MAIN_PLOT_ID) {
+            newNotifications.push({ id: nextId(), time: Date.now(), ...notify })
+          }
+        } else {
+          plots[id] = driftPlot(plot)
+        }
       }
-      return { ...state, plots }
+      if (newNotifications.length === 0) return { ...state, plots }
+      return { ...state, plots, notifications: [...state.notifications, ...newNotifications].slice(-5) }
+    }
+    case 'TOGGLE_NOTIFICATIONS':
+      return { ...state, notificationsEnabled: !state.notificationsEnabled }
+    case 'DISMISS_NOTIFICATION':
+      return { ...state, notifications: state.notifications.filter((n) => n.id !== action.id) }
+    case 'DEMO_TEST_NOTIFICATION': {
+      const notification = {
+        id: nextId(),
+        time: Date.now(),
+        tone: 'critical',
+        title: '⚠️ Amaran Kritikal — PestiGuard',
+        body: `Ulat Grayak dikesan di ${state.plots[MAIN_PLOT_ID]?.name ?? 'Ladang Saya'} · Risiko 91%`,
+      }
+      return { ...state, notifications: [...state.notifications, notification].slice(-5) }
     }
     case 'START_ATTACK': {
       const plot = state.plots[action.plotId]

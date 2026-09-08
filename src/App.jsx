@@ -1,5 +1,6 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { DemoProvider } from './context/DemoContext'
+import PushNotificationBanner from './components/PushNotificationBanner'
 import Entry from './pages/Entry'
 import PetaniLayout from './pages/petani/PetaniLayout'
 import Dashboard from './pages/petani/Dashboard'
@@ -15,6 +16,7 @@ import ImpactStats from './pages/admin/ImpactStats'
 export default function App() {
   return (
     <DemoProvider>
+      <PushNotificationBanner />
       <HashRouter>
         <Routes>
           <Route path="/" element={<Entry />} />
